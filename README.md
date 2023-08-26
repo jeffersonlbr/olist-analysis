@@ -25,4 +25,4 @@ Analysis of ratings and reviews.
 - Was any purchase from the same seller made by the same buyer after a negative review?
 
 # How might we?
-- How can we help 'Fabinho' improve the repeat purchase rate of his customers?
+- How can we offer solutions to assist Olist clients to increasing the purchase recurrence of his customers?
