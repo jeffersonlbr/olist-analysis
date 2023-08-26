@@ -15,8 +15,8 @@
 - Positive purchasing experiences ensure sustainability in revenue generation.
 
 ## Some insights
-1. The majority of purchases made on Olist are of low value. (<br>)
-2. It's likely that the profile of sellers is that of small business owners.(<br>)
+1. The majority of purchases made on Olist are of low value.<br>
+2. It's likely that the profile of sellers is that of small business owners.<br>
 3. Between 2017 and 2018, the majority of sellers would be classified as MEI.
 
 ## How we are going to offer a solution?
