@@ -2,6 +2,12 @@ library(sqldf)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
+library(tm)
+library(SnowballC)
+library(topicmodels)
+library(LDAvis)
+library(stringr)
+library(tidytext)
 
 setwd("C:/Users/alexm/OneDrive/Desktop/Pós Data Science/3º Trimestre/Visualization")
 csvs <- list.files(pattern = "\\.csv$")
@@ -31,7 +37,7 @@ df1 <- df1 |>
   mutate(postagem_tmp = as.numeric(difftime(order_delivered_carrier_date, order_purchase_timestamp, units = "hours"))) |>
   mutate(tempo_resposta_review = as.numeric(difftime(review_answer_timestamp, review_creation_date, units = "hours")))
 
-query1 <- sqldf("SELECT order_id, order_delivered_customer_date, review_comment_message, review_id, review_score, review_answer_timestamp, order_approved_at, order_delivered_carrier_date, review_creation_date, seller_id, frete_tmp, tempo_resposta_review, payment_sequential, payment_installments, postagem_tmp, product_id, order_item_id, price, freight_value, payment_value, payment_type,product_category_name, customer_unique_id, seller_state, customer_state, flag_atraso, flag_insatisfeito
+query1 <- sqldf("SELECT price, order_id, order_delivered_customer_date, review_comment_message, review_id, review_score, review_answer_timestamp, order_approved_at, order_delivered_carrier_date, review_creation_date, seller_id, frete_tmp, tempo_resposta_review, payment_sequential, payment_installments, postagem_tmp, product_id, order_item_id, freight_value, payment_value, payment_type,product_category_name, customer_unique_id, seller_state, customer_state, flag_atraso, flag_insatisfeito
                 FROM df1 a")
 
 por_vendedor_vendas_distintas <- query1 |> 
@@ -39,11 +45,15 @@ por_vendedor_vendas_distintas <- query1 |>
   summarise(
     mx_payment_sequential = max(ifelse(is.na(payment_sequential), 0, payment_sequential)),
     mx_payment_installments = max(ifelse(is.na(payment_installments), 0, payment_installments)),
-    produtos_distintos = n_distinct(product_id)
+    produtos_distintos = n_distinct(product_id),
+    total_price_per_order = sum(price, na.rm = TRUE),
+    vendas_distintas = n_distinct(order_id)
   ) |> 
   group_by(seller_id) |>  
   summarise(
-    vendas_distintas = sum(!is.na(order_id)),
+    vendas_distintas_vendedor = sum(!is.na(order_id)),
+    volume_vendas = sum(total_price_per_order),
+    preco_medio = mean(total_price_per_order, na.rm = TRUE),
     av_payment_installments = mean(mx_payment_installments, na.rm = TRUE),
     max_payment_installments = max(mx_payment_installments, na.rm = TRUE),
     av_payment_sequential = mean(mx_payment_sequential, na.rm = TRUE),
@@ -91,7 +101,6 @@ por_vendedor_frete_over_payment <- query1 |>
 por_vendedor_reviews <- query1 |> 
   group_by(seller_id) |> 
   summarise(
-    reviews_contagem = n_distinct(ifelse(is.na(review_id), 0, review_id)),
     review_media = mean(review_score, na.rm = TRUE),
     review_comment_message_length_avg = mean(nchar(ifelse(is.na(review_comment_message), 0, review_comment_message)), na.rm = TRUE),
     review_comment_n_vazios = sum(nchar(review_comment_message) > 0) 
@@ -119,9 +128,111 @@ df_vendedor <- por_vendedor_tempo_frete |>
   left_join(por_vendedor_pagamento_preferido, by = "seller_id") |>
   left_join(por_vendedor_postagem_tmp_medio, by = "seller_id") |>
   left_join(por_vendedor_frete_vlr_medio, by = "seller_id")
-  
-# parei por aqui por enquanto
 
+# a partir daqui é análise de texto
+  
+df1_low_reviews <- df1 %>%
+  filter(review_score <= 5 & 
+           !is.na(review_comment_message) & str_trim(review_comment_message) != "") %>%
+  arrange(is.na(review_comment_message), review_id) %>%
+  distinct(review_id, .keep_all = TRUE)
+
+corpus <- Corpus(VectorSource(df1_low_reviews$review_comment_message))
+
+corpus_clean <- tm_map(corpus, content_transformer(tolower))
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+corpus_clean <- tm_map(corpus_clean, removeWords, stopwords("portuguese"))
+corpus_clean <- tm_map(corpus_clean, function(word) wordStem(word, language = "pt"))
+  
+dtm <- DocumentTermMatrix(corpus_clean)
+
+dtm <- removeSparseTerms(dtm, 0.99)  
+
+empty_rows <- which(rowSums(as.matrix(dtm)) == 0)
+
+dtm <- dtm[-empty_rows, ]
+
+k_values <- c(3, 5, 7, 10, 15, 20)
+
+models <- list()
+
+for(k in k_values){
+  models[[paste0("LDA_k_", k)]] <- LDA(dtm, k = k, control = list(seed = 123, alpha = 0.1))
+}
+
+for(model_name in names(models)){
+  
+  cat(paste("Terms for model", model_name, ":\n"))
+  print(terms(models[[model_name]], 10))
+  cat("\n")
+  
+  perp <- perplexity(models[[model_name]], newdata = dtm)
+  cat(paste("Perplexity for model", model_name, ":", perp), "\n")
+  
+  cat("\n--------------------------\n\n")
+}
+
+# parte abaixo não generalizada 
+
+
+terms(lda_model, 10)
+
+theta <- posterior(lda_model)$topics
+
+dominant_topic <- apply(theta, 1, which.max)
+
+phi <- lda_model@beta
+
+phi_normalized <- t(apply(phi, 1, function(x) x/sum(x)))
+
+vis <- LDAvis::createJSON(phi_normalized, theta, doc.length = rowSums(as.matrix(dtm)), vocab = colnames(dtm), term.frequency = colSums(as.matrix(dtm)))
+
+LDAvis::serVis(vis)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# parei por aqui por enquanto
 
 data_final = as.POSIXct("2018-08-29 15:00:37")
 
